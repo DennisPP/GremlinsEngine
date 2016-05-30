@@ -1,0 +1,125 @@
+#include "AnimationManager.h"
+#include "KeyFrameAnimation2D.h"
+
+#include "tinyxml.h"
+#include "Math3D/Math3D.h"
+
+#include "Core/GremlinsFramework.h"
+#include "SpriteAnimation/SpriteSheetLoader.h"
+#include "SpriteAnimation/SpriteSheet.h"
+#include "SpriteAnimation/Sprite.h"
+
+#include <cassert>
+
+
+
+namespace KeyFrameAnimation2D
+{
+
+TAnimationItem::~TAnimationItem()
+{
+	if( mAnimationGroup )
+		delete mAnimationGroup;
+	mAnimationGroup = NULL;
+}
+	
+
+TAnimationManager::TAnimationManager()
+{
+}
+
+TAnimationManager::~TAnimationManager()
+{
+	for(size_t j=0;j<mAnimationGroups.size();++j)
+		if( mAnimationGroups[j] )
+			delete mAnimationGroups[j];
+	
+	mAnimationGroups.clear();
+}
+
+TKeyFrameAnimationGroup2D* TAnimationManager::GetAnimation(const std::string& fileName, const std::string& animationName)
+{
+	for(size_t j=0;j<mAnimationGroups.size();++j)
+	{
+		if( mAnimationGroups[j]->mFileName == fileName && mAnimationGroups[j]->mAnimationGroupName == animationName )
+		{
+			return mAnimationGroups[j]->mAnimationGroup;
+		}
+	}
+
+	const std::string & root = TGremlinsFramework::GetInstance()->GetAssetRoot();
+    const std::string & dir = (root + "media/");
+	
+	TSpriteSheetLoader *loader = TSpriteSheetLoader::GetInstance();
+	TSpriteSheet* mSpriteSheet = loader->LoadSpriteSheet("MathLand.xml", dir.c_str());
+	
+	TiXmlDocument doc;
+	doc.LoadFile(fileName.c_str());
+
+	TiXmlElement * rootElement = doc.FirstChildElement("KeyFrameAnimationGroup2Ds");
+	assert( rootElement );
+
+	TiXmlElement * group = rootElement->FirstChildElement("KeyFrameAnimationGroup2D");
+	assert( group );
+	for(;group;group=group->NextSiblingElement("KeyFrameAnimationGroup2D"))
+	{
+		const char* name = group->Attribute("name");
+		assert( name );
+		TKeyFrameAnimationGroup2D* animationGroup = new TKeyFrameAnimationGroup2D();
+		animationGroup->SetName(std::string(name));
+		
+		TAnimationItem * animationItem = new TAnimationItem(fileName, animationGroup->GetName(), animationGroup);
+
+		// add to the array
+		mAnimationGroups.push_back(animationItem);
+
+		TiXmlElement* animationElement = group->FirstChildElement("KeyFrameAnimation2D");
+		for(;animationElement;animationElement=animationElement->NextSiblingElement("KeyFrameAnimation2D"))
+		{
+			const char* spriteName = animationElement->Attribute("sprite");
+			assert(spriteName);
+			TKeyFrameAnimation2D* animation = new TKeyFrameAnimation2D();
+			animationGroup->AddAnimation(animation);
+			TSprite* sprite = mSpriteSheet->GetSprite(spriteName);
+			animation->SetSprite(sprite);
+
+			// add the key frames to the animation
+			TiXmlElement* keyFrameElement = animationElement->FirstChildElement("Frame");
+			for(;keyFrameElement;keyFrameElement=keyFrameElement->NextSiblingElement("Frame"))
+			{
+				TKeyFrame keyFrame;
+				int time = keyFrameElement->QueryFloatAttribute("time", &keyFrame.time);
+				assert( time == TIXML_SUCCESS );
+				keyFrameElement->QueryFloatAttribute("x", &keyFrame.x);
+				keyFrameElement->QueryFloatAttribute("y", &keyFrame.y);
+				keyFrameElement->QueryFloatAttribute("scalex", &keyFrame.scaleX);
+				keyFrameElement->QueryFloatAttribute("scaley", &keyFrame.scaleY);
+			
+				keyFrameElement->QueryFloatAttribute("rotation", &keyFrame.rotation);
+				keyFrame.rotation = Math::ToRadian(keyFrame.rotation);
+
+				keyFrameElement->QueryFloatAttribute("r", &keyFrame.color.r);
+				keyFrameElement->QueryFloatAttribute("g", &keyFrame.color.g);
+				keyFrameElement->QueryFloatAttribute("b", &keyFrame.color.b);
+				keyFrameElement->QueryFloatAttribute("a", &keyFrame.color.a);
+				animation->AddKeyFrame(keyFrame);
+			}
+		}
+	}	
+
+	for(size_t j=0;j<mAnimationGroups.size();++j)
+	{
+		if( mAnimationGroups[j]->mFileName == fileName && mAnimationGroups[j]->mAnimationGroupName == animationName )
+		{
+			return mAnimationGroups[j]->mAnimationGroup;
+		}
+	}
+
+	return NULL;
+}
+	
+
+std::vector<TAnimationItem*> mAnimationGroups;
+
+
+}
